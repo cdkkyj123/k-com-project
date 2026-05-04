@@ -1,66 +1,96 @@
 # 설계 문서: 전국 프랜차이즈 스마트 오더 시스템
 
 ## 1. 비즈니스 시나리오 및 시스템 정의
+본 시스템은 스타벅스의 '사이렌 오더'와 같은 **전국 규모 프랜차이즈의 모바일 주문 및 실시간 매장 관제 시스템**을 모델로 합니다. 중앙에서 대규모 주문을 처리하고, Kafka를 통해 각 매장 POS로 주문을 전파하며, 실시간으로 인기 메뉴를 집계합니다.
 
-본 시스템은 대형 커피 프랜차이즈(예: 스타벅스, 투썸플레이스)의 **모바일 앱 기반 사전 주문 및 매장 픽업 서비스**를 모사한 백엔드 시스템입니다. 수천 개의 매장에서 발생하는 대규모 트래픽을 효율적으로 제어하고, 실시간으로 비즈니스 인사이트를 도출하는 것을 목표로 합니다.
+---
 
-### 1.1 주요 도메인 모델
-*   **스마트 오더 (Smart Order)**: 사용자가 앱에서 매장을 선택하고 메뉴를 주문하면, 중앙 서버가 이를 처리한 후 해당 매장의 POS 시스템으로 즉시 전송합니다.
-*   **실시간 전국 인기 차트**: 전국 모든 매장에서 발생하는 주문 데이터를 실시간으로 집계하여 사용자에게 "지금 가장 핫한 메뉴" 정보를 제공합니다.
-*   **포인트 결제 시스템**: 대규모 동시 접속 환경에서도 안전하게 포인트를 충전하고 주문 금액을 차감합니다.
+## 2. 상세 설계 내용 (ERD)
 
-## 2. 기술적 도전 과제 및 해결 전략
+### 2.1 User (사용자)
+- `id` (PK, Long): 사용자 식별자
+- `point_balance` (Long): 현재 보유 포인트 잔액
+- `created_at` (LocalDateTime): 가입 일시
+- `updated_at` (LocalDateTime): 수정 일시
 
-### 2.1 대규모 트래픽 및 동시성 제어 (Concurrency)
-*   **문제**: 출근 시간대 등 특정 시간대에 포인트 충전 및 결제 요청이 수만 건 이상 집중됨.
-*   **해결**: **Redis Distributed Lock (Redisson)**을 활용하여 사용자 식별자(`userId`) 기반의 분산 락을 적용함으로써 데이터 정합성을 보장하고 DB 부하를 분산함.
+### 2.2 Store (매장)
+- `id` (PK, Long): 매장 식별자
+- `name` (String): 매장명 (예: 강남역점)
+- `address` (String): 매장 주소
+- `status` (Enum): 영업 상태 (`OPEN`, `CLOSED`)
+- `created_at`, `updated_at`
 
-### 2.2 실시간 데이터 파이프라인 및 가용성 (Data Consistency)
-*   **문제**: 중앙 서버와 매장 POS 간의 직접적인 통신은 네트워크 장애 시 데이터 유실 위험이 크며, 대규모 집계 쿼리는 DB 성능을 저하시킴.
-*   **해결**: 
-    - **Kafka Cluster**: 주문 정보를 매장별 토픽 파티션으로 분산 발행하여 매장 POS가 안전하게 메시지를 소비(Consume)할 수 있는 구조 구축.
-    - **Transactional Outbox Pattern**: DB 트랜잭션과 Kafka 메시지 발행의 원자성을 보장하여 "적어도 한 번(At-Least-Once)"의 데이터 전송을 보장.
+### 2.3 Menu (메뉴)
+- `id` (PK, Long): 메뉴 식별자
+- `name` (String): 메뉴명
+- `price` (Long): 가격
+- `category` (Enum): 카테고리 (`COFFEE`, `ADE`, `DESSERT` 등)
+- `status` (Enum): 판매 상태 (`AVAILABLE`, `OUT_OF_STOCK`, `HIDDEN`)
+- `created_at`, `updated_at`
 
-### 2.3 대규모 데이터 집계 및 성능 (Scalability)
-*   **문제**: 수백만 건의 주문 내역을 DB에서 직접 집계하여 인기 메뉴를 산출하는 것은 실시간성이 떨어지고 비용이 많이 듬.
-*   **해결**: Kafka 컨슈머가 실시간 스트림 데이터를 받아 **Redis Sorted Set**에 가중치를 합산하는 방식으로 아키텍처를 구성하여 O(1)의 속도로 랭킹 정보를 반환.
+### 2.4 Order (주문)
+- `id` (PK, Long): 주문 식별자
+- `user_id` (Long): 주문자 ID (ID 기반 참조)
+- `store_id` (Long): 주문 매장 ID (ID 기반 참조)
+- `menu_id` (Long): 주문 메뉴 ID (ID 기반 참조)
+- `price` (Long): 결제 당시 가격
+- `created_at`, `updated_at`
 
-### 2.4 데이터 조회 최적화 (Pagination)
-*   **문제**: 매장별 메뉴 목록이나 대량의 히스토리 조회 시 전통적인 Offset 기반 페이징은 데이터 양이 많아질수록 성능이 기하급수적으로 저하됨.
-*   **해결**: **Cursor 기반(No-Offset) 페이징**과 **QueryDSL**을 결합하여 데이터 규모와 관계없이 일정한 응답 속도를 유지함.
+### 2.5 PointHistory (포인트 내역)
+- `id` (PK, Long): 내역 식별자
+- `user_id` (Long): 사용자 ID
+- `type` (Enum): 변동 유형 (`CHARGE`, `USE`)
+- `amount` (Long): 변동 금액
+- `balance_after` (Long): 변동 후 잔액
+- `created_at`, `updated_at`
 
-## 3. 기술 스택 (Tech Stack)
-*   **Framework**: Spring Boot 3.x
-*   **Language**: Java 17
-*   **Build Tool**: Gradle
-*   **Database**: MySQL (Source), Redis (Cache/Lock/Ranking)
-*   **Messaging**: Kafka Cluster (3 Brokers, KRaft Mode)
-*   **ORM**: JPA, QueryDSL
+### 2.6 Outbox (이벤트 아웃박스)
+- `id` (PK, Long): 이벤트 식별자
+- `aggregate_type` (String): 도메인 타입 (예: `ORDER`)
+- `aggregate_id` (Long): 관련 엔티티 ID
+- `payload` (Text/JSON): 메시지 내용 (storeId 포함)
+- `status` (Enum): 전송 상태 (`INIT`, `SENT`, `FAILED`)
+- `created_at`, `updated_at`
 
-## 4. 데이터 모델 (ERD)
+---
 
-### 4.1 Store (매장)
-- `id` (PK): 매장 식별자
-- `name`: 매장명
-- `address`: 매장 주소
-- `status`: 매장 상태 (OPEN, CLOSED)
-- `createdAt`: 생성일시
-- `updatedAt`: 수정일시
+## 3. API 명세서
 
-### 4.2 Order (주문)
-- `id` (PK): 주문 식별자
-- `userId`: 사용자 식별자
-- `storeId`: 매장 식별자 (Store ID)
-- `menuId`: 메뉴 식별자
-- `price`: 주문 당시 가격
-- `createdAt`: 주문일시
-- `updatedAt`: 수정일시
+### 3.1 매장 API
+*   **GET /api/v1/stores**
+    *   설명: 전체 매장 목록 조회.
+    *   응답: `ApiResponseDto<List<StoreResponse>>`
 
-## 5. API 명세 (API Specification)
+### 3.2 메뉴 API
+*   **GET /api/v1/menus**
+    *   설명: 필터링 및 커서 기반 메뉴 목록 조회.
+    *   파라미터: `keyword`(검색), `category`(분류), `lastId`(커서), `size`(개수)
+    *   응답: `ApiResponseDto<PageResponseDto<MenuResponse>>`
+*   **GET /api/v1/menus/popular**
+    *   설명: 최근 7일간 전국 인기 메뉴 TOP 3 조회 (Redis 실시간 집계 데이터).
+    *   응답: `ApiResponseDto<List<MenuResponse>>`
 
-### 5.1 Store API
-- **GET /api/v1/stores**: 매장 목록 조회
+### 3.3 포인트 API
+*   **POST /api/v1/points/charge**
+    *   설명: 포인트 충전 (분산 락 적용).
+    *   요청: `{ "userId": 1, "amount": 10000 }`
+    *   응답: `ApiResponseDto<PointChargeResponse>`
 
-### 5.2 Order API
-- **POST /api/v1/orders**: 주문 생성
-    - Request Body: `{ "userId": Long, "storeId": Long, "menuId": Long }`
+### 3.4 주문 API
+*   **POST /api/v1/orders**
+    *   설명: 주문 생성 및 포인트 결제 (매장 상태 검증 및 Kafka 발행).
+    *   요청: `{ "userId": 1, "storeId": 1, "menuId": 1 }`
+    *   응답: `ApiResponseDto<OrderResponse>`
+
+---
+
+## 4. 기술적 해결 전략 및 분석
+
+### 4.1 동시성 및 데이터 일관성
+- **Redisson 분산 락**: `userId` 기반의 락을 통해 고동시성 환경에서 포인트 잔액 부정합 방지.
+- **Transactional Outbox**: 주문 DB 저장과 Kafka 이벤트 발행의 원자성을 보장하여 메시지 유실 차단.
+
+### 4.2 대규모 데이터 처리 아키텍처
+- **Kafka 스트리밍 집계**: 전국 매장의 주문 이벤트를 수집하여 Redis Sorted Set에 실시간 점수 누적.
+- **슬라이딩 윈도우 (Sliding Window)**: 일자별 Redis 키(`popular_menus:yyyyMMdd`) 분리 및 합산을 통해 정확한 '최근 7일' 통계 제공 및 메모리 효율화(TTL 적용).
+- **Cursor 기반 페이징**: 대량 데이터 조회 시 `OFFSET`을 제거하고 인덱스 탐색을 통해 O(1) 성능 유지.

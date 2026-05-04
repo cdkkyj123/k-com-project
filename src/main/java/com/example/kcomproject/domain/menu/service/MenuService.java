@@ -13,9 +13,12 @@ import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Collection;
-import java.util.List;
+import java.time.Duration;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 @Service
 @RequiredArgsConstructor
@@ -24,7 +27,8 @@ public class MenuService {
     private final MenuRepository menuRepository;
     private final RedissonClient redissonClient;
 
-    private static final String POPULAR_MENUS_KEY = "popular_menus:realtime";
+    private static final String KEY_PREFIX = "popular_menus:";
+    private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
 
     @Cacheable(value = "menuList", key = "#keyword + '_' + #category + '_' + #status + '_' + #lastId + '_' + #size")
     @Transactional(readOnly = true)
@@ -43,16 +47,39 @@ public class MenuService {
         );
     }
 
+    @Cacheable(value = "popularMenus")
     @Transactional(readOnly = true)
     public List<MenuResponse> getPopularMenus() {
-        RScoredSortedSet<Long> popularMenuIds = redissonClient.getScoredSortedSet(POPULAR_MENUS_KEY);
-        Collection<Long> top3Ids = popularMenuIds.valueRangeReversed(0, 2);
+        LocalDate now = LocalDate.now();
+        List<String> keys = IntStream.range(0, 7)
+                .mapToObj(i -> KEY_PREFIX + now.minusDays(i).format(FORMATTER))
+                .toList();
+
+        // Aggregate scores from the last 7 days in Java
+        // Since the number of menus is limited (around 500 as per ADR), this is efficient.
+        Map<Long, Double> aggregatedScores = new HashMap<>();
+
+        for (String key : keys) {
+            RScoredSortedSet<Long> dailySet = redissonClient.getScoredSortedSet(key);
+            dailySet.entryRange(0, -1).forEach(entry ->
+                    aggregatedScores.merge(entry.getValue(), entry.getScore(), Double::sum)
+            );
+        }
+
+        List<Long> top3Ids = aggregatedScores.entrySet().stream()
+                .sorted(java.util.Map.Entry.<Long, Double>comparingByValue().reversed())
+                .limit(3)
+                .map(java.util.Map.Entry::getKey)
+                .collect(Collectors.toList());
 
         if (top3Ids.isEmpty()) {
             return List.of();
         }
 
-        return menuRepository.findAllById(top3Ids).stream()
+        List<Menu> menus = menuRepository.findAllByIdIn(top3Ids);
+
+        return menus.stream()
+                .sorted(Comparator.comparingInt(m -> top3Ids.indexOf(m.getId())))
                 .map(MenuResponse::from)
                 .collect(Collectors.toList());
     }
