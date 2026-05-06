@@ -22,6 +22,9 @@ public class Outbox extends BaseEntity {
     @Column(nullable = false)
     private Long aggregateId;
 
+    @Column(nullable = true)
+    private String partitionKey;
+
     @Column(nullable = false, columnDefinition = "TEXT")
     private String payload;
 
@@ -29,11 +32,16 @@ public class Outbox extends BaseEntity {
     @Column(nullable = false)
     private OutboxStatus status;
 
+    @Column(nullable = false)
+    @Builder.Default
+    private int retryCount = 0;
+
     public void sendSuccess() {
         this.status = OutboxStatus.SENT;
     }
 
     public void sendFailed() {
         this.status = OutboxStatus.FAILED;
+        this.retryCount++;
     }
 }

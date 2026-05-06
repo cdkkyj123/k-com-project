@@ -5,6 +5,8 @@ import com.example.kcomproject.domain.store.entity.Store;
 import com.example.kcomproject.domain.store.entity.StoreStatus;
 import com.example.kcomproject.domain.store.repository.StoreRepository;
 import com.example.kcomproject.global.dto.PageResponseDto;
+import com.example.kcomproject.global.exception.common.ErrorCode;
+import com.example.kcomproject.global.exception.domain.StoreException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
@@ -40,10 +42,10 @@ public class StoreService {
 
     public void validateStoreStatus(Long storeId) {
         Store store = storeRepository.findById(storeId)
-                .orElseThrow(() -> new IllegalArgumentException("Store not found: " + storeId));
+                .orElseThrow(() -> new StoreException(ErrorCode.STORE_NOT_FOUND));
 
         if (store.getStatus() != StoreStatus.OPEN) {
-            throw new IllegalStateException("Store is not open: " + storeId);
+            throw new StoreException(ErrorCode.STORE_CLOSED);
         }
     }
 }
