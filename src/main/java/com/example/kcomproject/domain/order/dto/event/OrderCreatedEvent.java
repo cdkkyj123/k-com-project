@@ -1,4 +1,4 @@
-package com.example.kcomproject.domain.order.dto.response;
+package com.example.kcomproject.domain.order.dto.event;
 
 import com.example.kcomproject.domain.order.entity.OrderStatus;
 import lombok.Builder;
@@ -6,16 +6,16 @@ import lombok.Builder;
 import java.util.List;
 
 @Builder
-public record OrderResponse(
+public record OrderCreatedEvent(
         Long orderId,
         Long userId,
         Long storeId,
         Long totalPrice,
         OrderStatus status,
-        List<OrderItemResponse> items
+        List<OrderItemEvent> items
 ) {
     @Builder
-    public record OrderItemResponse(
+    public record OrderItemEvent(
             Long menuId,
             Integer quantity,
             Long price

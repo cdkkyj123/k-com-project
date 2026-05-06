@@ -20,6 +20,6 @@ public class OrderController {
 
     @PostMapping
     public ResponseEntity<ApiResponseDto<OrderResponse>> createOrder(@RequestBody OrderRequest request) {
-        return ResponseEntity.ok(ApiResponseDto.success(orderService.createOrder(request.userId(), request.storeId(), request.menuId())));
+        return ResponseEntity.ok(ApiResponseDto.success(orderService.createOrder(request.userId(), request.storeId(), request.items())));
     }
 }

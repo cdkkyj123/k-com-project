@@ -5,31 +5,26 @@ import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
-@Table(name = "orders")
+@Table(name = "order_items")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-public class Order extends BaseEntity {
+public class OrderItem extends BaseEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @Column(nullable = false)
-    private Long userId;
+    private Long orderId;
 
     @Column(nullable = false)
-    private Long storeId;
+    private Long menuId;
 
     @Column(nullable = false)
-    private Long totalPrice;
+    private Integer quantity;
 
-    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private OrderStatus status;
-
-    public void updateStatus(OrderStatus status) {
-        this.status = status;
-    }
+    private Long price;
 }

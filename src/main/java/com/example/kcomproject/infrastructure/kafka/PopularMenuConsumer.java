@@ -1,6 +1,6 @@
 package com.example.kcomproject.infrastructure.kafka;
 
-import com.example.kcomproject.domain.order.dto.request.OrderRequest;
+import com.example.kcomproject.domain.order.dto.event.OrderCreatedEvent;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -32,22 +32,23 @@ public class PopularMenuConsumer {
     )
     public void consume(String message) {
         try {
-            OrderRequest orderRequest = objectMapper.readValue(message, OrderRequest.class);
-            Long menuId = orderRequest.menuId();
-
-            if (menuId == null) {
-                log.warn("MenuId is null in order message: {}", message);
+            OrderCreatedEvent event = objectMapper.readValue(message, OrderCreatedEvent.class);
+            
+            if (event.items() == null || event.items().isEmpty()) {
+                log.warn("OrderItems are empty in order message: {}", message);
                 return;
             }
 
             String today = LocalDate.now().format(FORMATTER);
             String key = KEY_PREFIX + today;
-
             RScoredSortedSet<Long> popularMenus = redissonClient.getScoredSortedSet(key);
-            popularMenus.addScore(menuId, 1);
-            popularMenus.expire(Duration.ofDays(8));
 
-            log.debug("Updated popular menu score: menuId={}, date={}", menuId, today);
+            for (OrderCreatedEvent.OrderItemEvent item : event.items()) {
+                popularMenus.addScore(item.menuId(), item.quantity());
+            }
+            
+            popularMenus.expire(Duration.ofDays(8));
+            log.debug("Updated popular menu scores for order: {}", event.orderId());
         } catch (JsonProcessingException e) {
             log.error("Failed to parse order message: {}", message, e);
         }

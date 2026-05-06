@@ -33,4 +33,10 @@ public class MockPaymentService {
 
         log.info("Payment successful for user: {}, amount: {}", userId, amount);
     }
+
+    public boolean verifyPaymentStatus(String idempotencyKey) {
+        log.info("Verifying payment status for idempotencyKey: {}", idempotencyKey);
+        // 90% 확률로 성공 반환
+        return random.nextInt(100) < 90;
+    }
 }

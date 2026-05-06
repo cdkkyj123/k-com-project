@@ -76,6 +76,23 @@ public class PointTransactionService {
     }
 
     @Transactional
+    public void refund(Long userId, Long amount, String idempotencyKey) {
+        if (chargeHistoryRepository.existsByIdempotencyKey(idempotencyKey)) {
+            return;
+        }
+
+        ChargeHistory history = ChargeHistory.builder()
+                .userId(userId)
+                .amount(amount)
+                .status(ChargeStatus.SUCCESS)
+                .idempotencyKey(idempotencyKey)
+                .build();
+        chargeHistoryRepository.save(history);
+
+        charge(userId, amount);
+    }
+
+    @Transactional
     public User use(Long userId, Long amount) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UserException(ErrorCode.USER_NOT_FOUND));

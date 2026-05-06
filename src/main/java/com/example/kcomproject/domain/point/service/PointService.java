@@ -61,7 +61,28 @@ public class PointService {
     public PointResponse usePoint(Long userId, Long amount) {
         return withLock(userId, () -> pointTransactionService.use(userId, amount));
     }
+
+    public void processWebhook(String idempotencyKey, String status) {
+        ChargeHistory history = chargeHistoryRepository.findByIdempotencyKey(idempotencyKey)
+                .orElseThrow(() -> new PointException(ErrorCode.INTERNAL_SERVER_ERROR));
+
+        if (history.getStatus() != ChargeStatus.PENDING) {
+            log.info("Webhook ignored for idempotencyKey: {}. Current status: {}", idempotencyKey, history.getStatus());
+            return;
+        }
+
+        if ("SUCCESS".equalsIgnoreCase(status)) {
+            log.info("Webhook success for idempotencyKey: {}. Completing charge...", idempotencyKey);
+            withLock(history.getUserId(), () -> pointTransactionService.chargeAndCompleteHistory(
+                    history.getUserId(), history.getAmount(), history.getId()));
+        } else {
+            log.info("Webhook failed for idempotencyKey: {}. Updating status...", idempotencyKey);
+            pointTransactionService.updateHistoryStatus(history.getId(), ChargeStatus.FAILED);
+        }
+    }
+
     private void checkIdempotency(String key) {
+
         String fullKey = IDEMPOTENCY_KEY_PREFIX + key;
         // setIfAbsent (NX)를 사용하여 원자적으로 중복 체크 및 저장 (1시간 유지)
         Boolean success = redisTemplate.opsForValue().setIfAbsent(fullKey, "processed", Duration.ofHours(1));
