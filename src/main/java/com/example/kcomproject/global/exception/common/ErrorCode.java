@@ -23,6 +23,9 @@ public enum ErrorCode {
     // Menu
     MENU_NOT_FOUND(HttpStatus.NOT_FOUND, "메뉴를 찾을 수 없습니다."),
     INVALID_MENU_STATUS(HttpStatus.BAD_REQUEST, "유효하지 않은 메뉴 상태입니다."),
+    OUT_OF_STOCK(HttpStatus.BAD_REQUEST, "재고가 품절되었습니다."),
+    INSUFFICIENT_STOCK(HttpStatus.BAD_REQUEST, "재고가 부족합니다."),
+    STOCK_LOCK_FAILED(HttpStatus.CONFLICT, "재고 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요."),
 
     // Store
     STORE_NOT_FOUND(HttpStatus.NOT_FOUND, "매장을 찾을 수 없습니다."),

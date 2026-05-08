@@ -22,16 +22,13 @@ public class OutboxScheduler {
     private final OutboxRepository outboxRepository;
     private final KafkaProducerService kafkaProducerService;
 
-    private static final int MAX_RETRY_COUNT = 3;
+    private static final int MAX_RETRY_COUNT = 5;
 
     @Scheduled(fixedDelay = 5000)
     @SchedulerLock(name = "processOutbox", lockAtMostFor = "4s", lockAtLeastFor = "2s")
     public void processOutbox() {
-        List<Outbox> outboxes = outboxRepository.findByStatusIn(List.of(OutboxStatus.INIT, OutboxStatus.FAILED));
-        
-        List<Outbox> targets = outboxes.stream()
-                .filter(o -> o.getStatus() == OutboxStatus.INIT || o.getRetryCount() < MAX_RETRY_COUNT)
-                .toList();
+        List<Outbox> targets = outboxRepository.findTop100ByStatusInOrderByIdAsc(
+                List.of(OutboxStatus.INIT, OutboxStatus.FAILED));
 
         if (targets.isEmpty()) {
             return;
@@ -42,13 +39,19 @@ public class OutboxScheduler {
             try {
                 processRecord(outbox);
             } catch (Exception e) {
-                log.error("Failed to process outbox record: {}", outbox.getId(), e);
+                log.error("Failed to process outbox record: {}", outbox.getId());
             }
         }
     }
 
     @Transactional
     public void processRecord(Outbox outbox) {
+        if (outbox.getRetryCount() >= MAX_RETRY_COUNT) {
+            log.error("Outbox record reached max retry count. Moving to DLQ: {}", outbox.getId());
+            moveToDLQ(outbox);
+            return;
+        }
+
         try {
             // storeId를 키와 헤더에 포함시켜 전송 (ADR-ORDER-001)
             Map<String, String> headers = Map.of("storeId", outbox.getPartitionKey());
@@ -61,6 +64,15 @@ public class OutboxScheduler {
             outbox.sendFailed();
             outboxRepository.save(outbox);
             throw e;
+        }
+    }
+
+    private void moveToDLQ(Outbox outbox) {
+        try {
+            outbox.moveToDLQ();
+            outboxRepository.save(outbox);
+        } catch (Exception e) {
+            log.error("Failed to move outbox record to DLQ: {}", outbox.getId(), e);
         }
     }
 }

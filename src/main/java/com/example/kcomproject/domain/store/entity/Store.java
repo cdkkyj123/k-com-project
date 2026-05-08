@@ -25,4 +25,8 @@ public class Store extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private StoreStatus status;
+
+    public void updateStatus(StoreStatus status) {
+        this.status = status;
+    }
 }

@@ -16,6 +16,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 public class PointTransactionService {
@@ -46,7 +49,16 @@ public class PointTransactionService {
         user.charge(amount);
         User savedUser = userRepository.save(user);
 
-        saveHistory(userId, PointTransactionType.CHARGE, amount, savedUser.getPointBalance());
+        // FIFO 관리를 위한 필드 추가 (5년 만료)
+        PointHistory history = PointHistory.builder()
+                .userId(userId)
+                .type(PointTransactionType.CHARGE)
+                .amount(amount)
+                .balanceAfter(savedUser.getPointBalance())
+                .expiredAt(LocalDateTime.now().plusYears(5))
+                .remainAmount(amount)
+                .build();
+        pointHistoryRepository.save(history);
 
         chargeHistory.updateStatus(ChargeStatus.SUCCESS);
         chargeHistoryRepository.save(chargeHistory);
@@ -70,7 +82,15 @@ public class PointTransactionService {
         user.charge(amount);
         User savedUser = userRepository.save(user);
 
-        saveHistory(userId, PointTransactionType.CHARGE, amount, savedUser.getPointBalance());
+        PointHistory history = PointHistory.builder()
+                .userId(userId)
+                .type(PointTransactionType.CHARGE)
+                .amount(amount)
+                .balanceAfter(savedUser.getPointBalance())
+                .expiredAt(LocalDateTime.now().plusYears(5))
+                .remainAmount(amount)
+                .build();
+        pointHistoryRepository.save(history);
 
         return savedUser;
     }
@@ -100,18 +120,28 @@ public class PointTransactionService {
         user.use(amount);
         User savedUser = userRepository.save(user);
 
-        saveHistory(userId, PointTransactionType.USE, amount, savedUser.getPointBalance());
+        // FIFO 차감 로직
+        long toDeduct = amount;
+        List<PointHistory> chargeHistories = pointHistoryRepository
+                .findByUserIdAndTypeAndRemainAmountGreaterThanAndExpiredAtAfterOrderByCreatedAtAsc(
+                        userId, PointTransactionType.CHARGE, 0L, LocalDateTime.now());
 
-        return savedUser;
-    }
+        for (PointHistory chargeHistory : chargeHistories) {
+            long deduction = Math.min(toDeduct, chargeHistory.getRemainAmount());
+            chargeHistory.decreaseRemain(deduction);
+            pointHistoryRepository.save(chargeHistory);
+            toDeduct -= deduction;
+            if (toDeduct == 0) break;
+        }
 
-    private void saveHistory(Long userId, PointTransactionType type, Long amount, Long balanceAfter) {
         PointHistory history = PointHistory.builder()
                 .userId(userId)
-                .type(type)
+                .type(PointTransactionType.USE)
                 .amount(amount)
-                .balanceAfter(balanceAfter)
+                .balanceAfter(savedUser.getPointBalance())
                 .build();
         pointHistoryRepository.save(history);
+
+        return savedUser;
     }
 }

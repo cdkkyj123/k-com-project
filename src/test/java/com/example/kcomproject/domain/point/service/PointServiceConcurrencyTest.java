@@ -43,9 +43,10 @@ class PointServiceConcurrencyTest {
         CountDownLatch latch = new CountDownLatch(threadCount);
 
         for (int i = 0; i < threadCount; i++) {
+            final int index = i;
             executorService.submit(() -> {
                 try {
-                    pointService.chargePoint(userId, 100L);
+                    pointService.chargePoint(userId, 100L, "charge-" + System.nanoTime() + "-" + index);
                 } finally {
                     latch.countDown();
                 }
@@ -62,7 +63,7 @@ class PointServiceConcurrencyTest {
     @DisplayName("동시에 100개의 포인트 차감 요청이 오면 정확히 잔액만큼만 차감되어야 한다")
     void concurrentUseTest() throws InterruptedException {
         // Given: 5000 포인트 충전
-        pointService.chargePoint(userId, 5000L);
+        pointService.chargePoint(userId, 5000L, "initial-charge");
 
         int threadCount = 100;
         long useAmount = 100L; // 총 10000 포인트 차감 시도 (잔액 부족 예상)

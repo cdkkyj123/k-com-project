@@ -83,4 +83,14 @@ public class MenuService {
                 .map(MenuResponse::from)
                 .collect(Collectors.toList());
     }
+
+    @org.springframework.cache.annotation.CacheEvict(value = "menuList", allEntries = true)
+    @Transactional
+    public void updateMenuStatus(Long menuId, MenuStatus status) {
+        Menu menu = menuRepository.findById(menuId)
+                .orElseThrow(() -> new com.example.kcomproject.global.exception.domain.MenuException(com.example.kcomproject.global.exception.common.ErrorCode.MENU_NOT_FOUND));
+        
+        menu.updateStatus(status);
+        menuRepository.save(menu);
+    }
 }

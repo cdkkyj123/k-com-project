@@ -44,4 +44,8 @@ public class Outbox extends BaseEntity {
         this.status = OutboxStatus.FAILED;
         this.retryCount++;
     }
+
+    public void moveToDLQ() {
+        this.status = OutboxStatus.DLQ;
+    }
 }

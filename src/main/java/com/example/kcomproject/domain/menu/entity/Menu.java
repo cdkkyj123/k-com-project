@@ -30,4 +30,8 @@ public class Menu extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private MenuCategory category;
+
+    public void updateStatus(MenuStatus status) {
+        this.status = status;
+    }
 }

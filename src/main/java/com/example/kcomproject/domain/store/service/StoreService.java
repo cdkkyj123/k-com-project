@@ -8,6 +8,7 @@ import com.example.kcomproject.global.dto.PageResponseDto;
 import com.example.kcomproject.global.exception.common.ErrorCode;
 import com.example.kcomproject.global.exception.domain.StoreException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,6 +21,15 @@ import java.util.List;
 public class StoreService {
 
     private final StoreRepository storeRepository;
+
+    @Transactional
+    @CacheEvict(value = "storeList", allEntries = true)
+    public void updateStoreStatus(Long storeId, StoreStatus status) {
+        Store store = storeRepository.findById(storeId)
+                .orElseThrow(() -> new StoreException(ErrorCode.STORE_NOT_FOUND));
+        store.updateStatus(status);
+        storeRepository.save(store);
+    }
 
     @Cacheable(value = "storeList", key = "#keyword + '_' + #lastId + '_' + #size", unless = "#result.content().isEmpty()")
     public PageResponseDto<StoreResponse> getStores(String keyword, Long lastId, int size) {

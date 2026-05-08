@@ -4,6 +4,8 @@ import com.example.kcomproject.global.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.LocalDateTime;
+
 @Entity
 @Table(name = "point_histories")
 @Getter
@@ -28,4 +30,16 @@ public class PointHistory extends BaseEntity {
 
     @Column(nullable = false)
     private Long balanceAfter;
+
+    // FIFO 및 유효기간 관리를 위한 필드
+    private LocalDateTime expiredAt;
+
+    private Long remainAmount;
+
+    public void decreaseRemain(Long amount) {
+        if (this.remainAmount < amount) {
+            throw new IllegalArgumentException("Deduction amount exceeds remain amount");
+        }
+        this.remainAmount -= amount;
+    }
 }

@@ -12,5 +12,6 @@ public interface ChargeHistoryRepository extends JpaRepository<ChargeHistory, Lo
     Optional<ChargeHistory> findByIdempotencyKeyAndStatus(String idempotencyKey, ChargeStatus status);
     Optional<ChargeHistory> findByIdempotencyKey(String idempotencyKey);
     boolean existsByIdempotencyKey(String idempotencyKey);
+    List<ChargeHistory> findAllByUserId(Long userId);
     List<ChargeHistory> findAllByStatusAndCreatedAtBefore(ChargeStatus status, LocalDateTime createdAt);
 }

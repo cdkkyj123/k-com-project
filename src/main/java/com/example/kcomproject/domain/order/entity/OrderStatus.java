@@ -8,6 +8,9 @@ import lombok.RequiredArgsConstructor;
 public enum OrderStatus {
     PENDING("주문 대기"),
     ACCEPTED("주문 수락"),
+    PREPARING("제조 중"),
+    READY("픽업 대기"),
+    PICKED_UP("수령 완료"),
     REJECTED("주문 거절"),
     CANCELED("주문 취소");
 

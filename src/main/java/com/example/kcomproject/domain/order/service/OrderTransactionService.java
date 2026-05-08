@@ -1,7 +1,11 @@
 package com.example.kcomproject.domain.order.service;
 
 import com.example.kcomproject.domain.menu.entity.Menu;
+import com.example.kcomproject.domain.menu.entity.MenuStatus;
+import com.example.kcomproject.domain.menu.entity.MenuStock;
 import com.example.kcomproject.domain.menu.repository.MenuRepository;
+import com.example.kcomproject.domain.menu.repository.MenuStockRepository;
+import com.example.kcomproject.domain.menu.service.MenuService;
 import com.example.kcomproject.domain.order.dto.event.OrderCreatedEvent;
 import com.example.kcomproject.domain.order.dto.request.OrderRequest;
 import com.example.kcomproject.domain.order.entity.Order;
@@ -39,6 +43,8 @@ public class OrderTransactionService {
     private final OutboxRepository outboxRepository;
     private final PointTransactionService pointTransactionService;
     private final StoreService storeService;
+    private final MenuService menuService;
+    private final MenuStockRepository menuStockRepository;
     private final ObjectMapper objectMapper;
 
     @Transactional
@@ -52,6 +58,21 @@ public class OrderTransactionService {
         for (OrderRequest.OrderItemRequest itemRequest : itemRequests) {
             Menu menu = menuRepository.findById(itemRequest.menuId())
                     .orElseThrow(() -> new MenuException(ErrorCode.MENU_NOT_FOUND));
+
+            if (menu.getStatus() == MenuStatus.SOLD_OUT || menu.getStatus() == MenuStatus.OUT_OF_STOCK) {
+                throw new MenuException(ErrorCode.OUT_OF_STOCK);
+            }
+
+            // Check and decrease stock
+            MenuStock stock = menuStockRepository.findByStoreIdAndMenuId(storeId, menu.getId())
+                    .orElseThrow(() -> new MenuException(ErrorCode.OUT_OF_STOCK));
+            
+            stock.decrease(itemRequest.quantity());
+            menuStockRepository.save(stock);
+
+            if (stock.isSoldOut()) {
+                menuService.updateMenuStatus(menu.getId(), MenuStatus.SOLD_OUT);
+            }
             
             OrderItem orderItem = OrderItem.builder()
                     .menuId(menu.getId())
@@ -62,10 +83,10 @@ public class OrderTransactionService {
             totalPrice += menu.getPrice() * itemRequest.quantity();
         }
 
-        // 2. Deduct point balance
+        // 3. Deduct point balance
         pointTransactionService.use(userId, totalPrice);
 
-        // 3. Save Order record
+        // 4. Save Order record
         Order order = Order.builder()
                 .userId(userId)
                 .storeId(storeId)
@@ -74,7 +95,7 @@ public class OrderTransactionService {
                 .build();
         Order savedOrder = orderRepository.save(order);
 
-        // 4. Save OrderItems
+        // 5. Save OrderItems
         List<OrderItem> savedItems = new ArrayList<>();
         for (OrderItem item : orderItems) {
             OrderItem itemToSave = OrderItem.builder()
@@ -86,7 +107,7 @@ public class OrderTransactionService {
             savedItems.add(orderItemRepository.save(itemToSave));
         }
 
-        // 5. Create Outbox record with OrderCreatedEvent
+        // 6. Create Outbox record with OrderCreatedEvent
         try {
             OrderCreatedEvent event = OrderCreatedEvent.builder()
                     .orderId(savedOrder.getId())
@@ -102,7 +123,7 @@ public class OrderTransactionService {
                                     .build())
                             .collect(Collectors.toList()))
                     .build();
-                    
+
             String payload = objectMapper.writeValueAsString(event);
             Outbox outbox = Outbox.builder()
                     .aggregateType("ORDER")
@@ -118,6 +139,12 @@ public class OrderTransactionService {
         }
 
         return savedOrder;
+    }
+
+    @Transactional(readOnly = true)
+    public Order getOrder(Long orderId) {
+        return orderRepository.findById(orderId)
+                .orElseThrow(() -> new OrderException(ErrorCode.ORDER_NOT_FOUND));
     }
 
     @Transactional
