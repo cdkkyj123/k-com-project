@@ -25,7 +25,7 @@ public class PointFacade {
     public PointResponse chargePoint(Long userId, Long amount, String idempotencyKey) {
         RLock lock = redissonClient.getLock(LOCK_KEY_PREFIX + userId);
         try {
-            boolean available = lock.tryLock(10, 5, TimeUnit.SECONDS);
+            boolean available = lock.tryLock(10, -1, TimeUnit.SECONDS);
             if (!available) {
                 throw new PointException(ErrorCode.POINT_LOCK_FAILED);
             }
@@ -43,7 +43,7 @@ public class PointFacade {
     public PointResponse usePoint(Long userId, Long amount) {
         RLock lock = redissonClient.getLock(LOCK_KEY_PREFIX + userId);
         try {
-            boolean available = lock.tryLock(10, 5, TimeUnit.SECONDS);
+            boolean available = lock.tryLock(10, -1, TimeUnit.SECONDS);
             if (!available) {
                 throw new PointException(ErrorCode.POINT_LOCK_FAILED);
             }
@@ -61,7 +61,7 @@ public class PointFacade {
     public void refundPoint(Long userId, Long amount, String idempotencyKey) {
         RLock lock = redissonClient.getLock(LOCK_KEY_PREFIX + userId);
         try {
-            boolean available = lock.tryLock(10, 5, TimeUnit.SECONDS);
+            boolean available = lock.tryLock(10, -1, TimeUnit.SECONDS);
             if (!available) {
                 throw new PointException(ErrorCode.POINT_LOCK_FAILED);
             }

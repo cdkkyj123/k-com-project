@@ -14,6 +14,8 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 
+import java.util.concurrent.TimeUnit;
+
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -33,6 +35,16 @@ public class PopularMenuConsumer {
     public void consume(String message) {
         try {
             OrderCreatedEvent event = objectMapper.readValue(message, OrderCreatedEvent.class);
+
+            // Idempotency check using Redis SETNX
+            String idempotencyKey = "idempotency:popular_menu:" + event.orderId();
+            boolean isNewMessage = redissonClient.getBucket(idempotencyKey)
+                    .trySet(true, 3, TimeUnit.DAYS);
+
+            if (!isNewMessage) {
+                log.info("Duplicate message detected for orderId: {}. Skipping.", event.orderId());
+                return;
+            }
             
             if (event.items() == null || event.items().isEmpty()) {
                 log.warn("OrderItems are empty in order message: {}", message);

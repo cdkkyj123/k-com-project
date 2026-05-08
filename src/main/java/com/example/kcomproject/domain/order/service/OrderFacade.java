@@ -35,13 +35,13 @@ public class OrderFacade {
                 .toList();
 
         try {
-            boolean pointLockAcquired = pointLock.tryLock(10, 5, TimeUnit.SECONDS);
+            boolean pointLockAcquired = pointLock.tryLock(10, -1, TimeUnit.SECONDS);
             if (!pointLockAcquired) {
                 throw new OrderException(ErrorCode.POINT_LOCK_FAILED);
             }
 
             for (RLock stockLock : stockLocks) {
-                boolean stockLockAcquired = stockLock.tryLock(10, 5, TimeUnit.SECONDS);
+                boolean stockLockAcquired = stockLock.tryLock(10, -1, TimeUnit.SECONDS);
                 if (!stockLockAcquired) {
                     throw new OrderException(ErrorCode.STOCK_LOCK_FAILED);
                 }
@@ -73,7 +73,7 @@ public class OrderFacade {
             Order order = orderTransactionService.getOrder(orderId);
             pointLock = redissonClient.getLock("user_point_lock:" + order.getUserId());
             
-            boolean pointLockAcquired = pointLock.tryLock(10, 5, TimeUnit.SECONDS);
+            boolean pointLockAcquired = pointLock.tryLock(10, -1, TimeUnit.SECONDS);
             if (!pointLockAcquired) {
                 throw new OrderException(ErrorCode.POINT_LOCK_FAILED);
             }
