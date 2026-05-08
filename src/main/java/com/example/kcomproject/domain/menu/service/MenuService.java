@@ -50,38 +50,40 @@ public class MenuService {
     @Cacheable(value = "popularMenus")
     @Transactional(readOnly = true)
     public List<MenuResponse> getPopularMenus() {
+        return calculatePopularMenus();
+    }
+
+    public List<MenuResponse> calculatePopularMenus() {
         LocalDate now = LocalDate.now();
         List<String> keys = IntStream.range(0, 7)
                 .mapToObj(i -> KEY_PREFIX + now.minusDays(i).format(FORMATTER))
                 .toList();
 
-        // Aggregate scores from the last 7 days in Java
-        // Since the number of menus is limited (around 500 as per ADR), this is efficient.
-        Map<Long, Double> aggregatedScores = new HashMap<>();
+        String tempKey = "popular_menus:union:" + UUID.randomUUID();
+        RScoredSortedSet<Long> tempSet = redissonClient.getScoredSortedSet(tempKey);
+        
+        try {
+            // Perform ZUNIONSTORE on Redis
+            if (!keys.isEmpty()) {
+                tempSet.union(keys.toArray(new String[0]));
+            }
 
-        for (String key : keys) {
-            RScoredSortedSet<Long> dailySet = redissonClient.getScoredSortedSet(key);
-            dailySet.entryRange(0, -1).forEach(entry ->
-                    aggregatedScores.merge(entry.getValue(), entry.getScore(), Double::sum)
-            );
+            Collection<Long> top3Ids = tempSet.valueRangeReversed(0, 2);
+
+            if (top3Ids.isEmpty()) {
+                return List.of();
+            }
+
+            List<Menu> menus = menuRepository.findAllByIdIn(top3Ids);
+            List<Long> orderedIds = new ArrayList<>(top3Ids);
+
+            return menus.stream()
+                    .sorted(Comparator.comparingInt(m -> orderedIds.indexOf(m.getId())))
+                    .map(MenuResponse::from)
+                    .collect(Collectors.toList());
+        } finally {
+            tempSet.delete();
         }
-
-        List<Long> top3Ids = aggregatedScores.entrySet().stream()
-                .sorted(java.util.Map.Entry.<Long, Double>comparingByValue().reversed())
-                .limit(3)
-                .map(java.util.Map.Entry::getKey)
-                .collect(Collectors.toList());
-
-        if (top3Ids.isEmpty()) {
-            return List.of();
-        }
-
-        List<Menu> menus = menuRepository.findAllByIdIn(top3Ids);
-
-        return menus.stream()
-                .sorted(Comparator.comparingInt(m -> top3Ids.indexOf(m.getId())))
-                .map(MenuResponse::from)
-                .collect(Collectors.toList());
     }
 
     @org.springframework.cache.annotation.CacheEvict(value = "menuList", allEntries = true)

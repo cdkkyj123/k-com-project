@@ -22,7 +22,7 @@ public class OrderFacade {
     private final OrderTransactionService orderTransactionService;
     private final RedissonClient redissonClient;
 
-    public Order executeOrder(Long userId, Long storeId, List<OrderRequest.OrderItemRequest> itemRequests) {
+    public OrderTransactionService.OrderResult executeOrder(Long userId, Long storeId, List<OrderRequest.OrderItemRequest> itemRequests) {
         // Sort items by menuId to prevent deadlock during lock acquisition
         List<OrderRequest.OrderItemRequest> sortedRequests = itemRequests.stream()
                 .sorted(Comparator.comparing(OrderRequest.OrderItemRequest::menuId))

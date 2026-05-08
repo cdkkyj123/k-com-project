@@ -56,10 +56,9 @@ public class OrderService {
     }
 
     public OrderResponse createOrder(Long userId, Long storeId, List<OrderRequest.OrderItemRequest> items) {
-        Order order = orderFacade.executeOrder(userId, storeId, items);
-        
-        // Fetch order items to build response
-        List<OrderItem> savedItems = orderItemRepository.findAllByOrderId(order.getId());
+        OrderTransactionService.OrderResult result = orderFacade.executeOrder(userId, storeId, items);
+        Order order = result.order();
+        List<OrderItem> savedItems = result.items();
         
         return OrderResponse.builder()
                 .orderId(order.getId())

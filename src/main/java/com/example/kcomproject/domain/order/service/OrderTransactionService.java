@@ -30,6 +30,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -47,25 +49,42 @@ public class OrderTransactionService {
     private final MenuStockRepository menuStockRepository;
     private final ObjectMapper objectMapper;
 
+    public record OrderResult(Order order, List<OrderItem> items) {}
+
     @Transactional
-    public Order executeOrder(Long userId, Long storeId, List<OrderRequest.OrderItemRequest> itemRequests) {
+    public OrderResult executeOrder(Long userId, Long storeId, List<OrderRequest.OrderItemRequest> itemRequests) {
         // 1. Validate store status
         storeService.validateStoreStatus(storeId);
+
+        // 2. Batch fetch Menus and Stocks
+        List<Long> menuIds = itemRequests.stream()
+                .map(OrderRequest.OrderItemRequest::menuId)
+                .toList();
+
+        Map<Long, Menu> menuMap = menuRepository.findAllByIdIn(menuIds).stream()
+                .collect(Collectors.toMap(Menu::getId, Function.identity()));
+
+        Map<Long, MenuStock> stockMap = menuStockRepository.findAllByStoreIdAndMenuIdIn(storeId, menuIds).stream()
+                .collect(Collectors.toMap(MenuStock::getMenuId, Function.identity()));
 
         List<OrderItem> orderItems = new ArrayList<>();
         long totalPrice = 0;
 
         for (OrderRequest.OrderItemRequest itemRequest : itemRequests) {
-            Menu menu = menuRepository.findById(itemRequest.menuId())
-                    .orElseThrow(() -> new MenuException(ErrorCode.MENU_NOT_FOUND));
+            Menu menu = menuMap.get(itemRequest.menuId());
+            if (menu == null) {
+                throw new MenuException(ErrorCode.MENU_NOT_FOUND);
+            }
 
             if (menu.getStatus() == MenuStatus.SOLD_OUT || menu.getStatus() == MenuStatus.OUT_OF_STOCK) {
                 throw new MenuException(ErrorCode.OUT_OF_STOCK);
             }
 
             // Check and decrease stock
-            MenuStock stock = menuStockRepository.findByStoreIdAndMenuId(storeId, menu.getId())
-                    .orElseThrow(() -> new MenuException(ErrorCode.OUT_OF_STOCK));
+            MenuStock stock = stockMap.get(menu.getId());
+            if (stock == null) {
+                throw new MenuException(ErrorCode.OUT_OF_STOCK);
+            }
             
             stock.decrease(itemRequest.quantity());
             menuStockRepository.save(stock);
@@ -138,7 +157,7 @@ public class OrderTransactionService {
             throw new OrderException(ErrorCode.INTERNAL_SERVER_ERROR);
         }
 
-        return savedOrder;
+        return new OrderResult(savedOrder, savedItems);
     }
 
     @Transactional(readOnly = true)
