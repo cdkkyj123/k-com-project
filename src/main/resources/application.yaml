@@ -34,6 +34,8 @@ spring:
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
 
 logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p [%X{traceId}] %m%n"
   level:
     org.hibernate.SQL: DEBUG
     com.example.kcomproject: DEBUG
